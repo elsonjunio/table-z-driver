@@ -2,13 +2,11 @@ mod config;
 mod hotplug;
 mod reader;
 mod virtual_device;
+mod com;
+mod translator;
 
 use crate::{
-    config::Config,
-    hotplug::HotPlugHandler,
-    hotplug::hotplug::CustomHotplugEvent,
-    reader::USBReader,
-    virtual_device::{VBtn, VPen},
+    com::socket::SocketServer, config::Config, hotplug::{hotplug::CustomHotplugEvent, HotPlugHandler}, reader::USBReader, translator::{tablet_m100_translator::TabletM100Translator, translator::EmitCommand, translator::Translator}, virtual_device::{VBtn, VPen}
 };
 use std::path::Path;
 
@@ -21,9 +19,6 @@ use std::sync::{
 
 use std::collections::HashMap;
 
-mod com;
-
-use com::socket::SocketServer;
 
 static STOP_FLAG: OnceLock<Mutex<Option<Arc<AtomicBool>>>> = OnceLock::new();
 
@@ -114,24 +109,32 @@ fn main() {
                     let tx_socket = tx_socket.clone();
                     //let stop_clone = stop_flag.clone();
 
+                    let translator = TabletM100Translator;
+
                     usb_reader
                         .start(device, endpoint, stop_flag.clone(), move |buf| {
                             println!("Recebi pacote: {:?}", buf);
 
-                            if buf.len() >= 8 && (buf[1] == 192 || buf[1] == 193) {
-                                let pen_x = (buf[5] as i32 * 255 + buf[4] as i32);
-                                let pen_y = (buf[3] as i32 * 255 + buf[2] as i32);
-                                let pen_pressure = (buf[7] as i32 * 255 + buf[6] as i32);
-                                let touching = buf[1] != 192;
+                            let emit_flow = translator.conv(&buf);
 
-                                if let Err(e) =
-                                    vpen_clone.emit(pen_x, pen_y, pen_pressure, touching)
-                                {
-                                    eprintln!("Erro emitindo evento: {e}");
+                            for emit in emit_flow {
+                                match emit {
+                                    EmitCommand::Pen { x, y, pressure, touch } => {
+                                        if let Err(e) = vpen_clone.emit(x, y, pressure, touch) {
+                                            eprintln!("Erro emitindo evento: {e}");
+                                        }
+                                        let _ = tx_socket.send(buf.clone()); // ou serializar o comando
+                                    }
+                                    EmitCommand::Btn { key, pressed } => {
+                                        //if let Err(e) = vbtn_clone.emit_raw(key, pressed) {
+                                        //    eprintln!("Erro emitindo botão: {e}");
+                                        //}
+                                        let _ = tx_socket.send(buf.clone()); // idem
+                                    }
                                 }
-
-                                let _ = tx_socket.send(buf.clone());
                             }
+
+ 
                         })
                         .unwrap();
                 }
