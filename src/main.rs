@@ -2,21 +2,50 @@ mod config;
 mod hotplug;
 mod reader;
 mod virtual_device;
+mod com;
+mod translator;
 
 use crate::{
-    config::Config,
-    hotplug::HotPlugHandler,
-    hotplug::hotplug::CustomHotplugEvent,
-    reader::USBReader,
-    virtual_device::{VBtn, VPen},
+    com::socket::SocketServer, config::Config, hotplug::{hotplug::CustomHotplugEvent, HotPlugHandler}, reader::USBReader, translator::{tablet_m100_translator::TabletM100Translator, translator::EmitCommand, translator::Translator}, virtual_device::{VBtn, VPen}
 };
 use std::path::Path;
 
 use evdev::Key;
 
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex, OnceLock,
+    atomic::{AtomicBool, Ordering},
+};
+
+use std::collections::HashMap;
+
+
+static STOP_FLAG: OnceLock<Mutex<Option<Arc<AtomicBool>>>> = OnceLock::new();
+
+fn init_globals() {
+    // inicializa o OnceLock na primeira chamada
+    STOP_FLAG.get_or_init(|| Mutex::new(None));
+}
+
+fn key_from_str(name: &str) -> Option<Key> {
+    let map: HashMap<&'static str, Key> = [
+        ("BTN_TOOL_PEN", Key::BTN_TOOL_PEN),
+        ("BTN_STYLUS", Key::BTN_STYLUS),
+        ("BTN_TOUCH", Key::BTN_TOUCH),
+        // se precisar de mais, só adicionar
+    ]
+    .into_iter()
+    .collect();
+
+    map.get(name).copied()
+}
 
 fn main() {
+    init_globals();
+
+    let socket_server = SocketServer::new("/tmp/tablet.sock");
+    let tx_socket = socket_server.sender();
+
     let path = Path::new("/etc/table_z_utils.yaml");
 
     let cfg = match Config::from_file(path) {
@@ -29,81 +58,113 @@ fn main() {
 
     println!("Configuração carregada:\n{:#?}", cfg);
 
-    HotPlugHandler::init(|device, event| match event {
-        CustomHotplugEvent::DeviceArrived => {
-            let vendor_id: u16 = 0x08f2;
-            let product_id: u16 = 0x6811;
-            let endpoint: u8 = 0x85;
+    HotPlugHandler::init({
+        let cfg = cfg.clone(); // precisa do derive Clone em Config
 
-            let usb_reader = USBReader::new().unwrap();
+        move |device, event| match event {
+            CustomHotplugEvent::DeviceArrived => {
+                // pega dados da configuração
+                let vendor_id: u16 = cfg.vendor_id;
+                let product_id: u16 = cfg.product_id;
+                let endpoint: u8 = cfg.interface;
 
-            let pen_keys = [Key::BTN_TOOL_PEN, Key::BTN_STYLUS, Key::BTN_TOUCH];
-            let mut vpen = VPen::new(4096, 4096, 2047, 20, 30, &pen_keys, "10moons-pen").unwrap();
+                println!(
+                    "Callback: dispositivo conectado {:?}",
+                    device.device_descriptor().unwrap()
+                );
 
-            println!(
-                "Callback: dispositivo conectado {:?}",
-                device.device_descriptor().unwrap()
-            );
+                let desc = device.device_descriptor().unwrap();
 
-            let desc = device.device_descriptor().unwrap();
+                if desc.vendor_id() == vendor_id && desc.product_id() == product_id {
+                    println!("Dispositivo encontrado!");
 
-            if desc.vendor_id() == vendor_id && desc.product_id() == product_id {
-                println!("Dispositivo encontrado!");
+                    // Instancia Objetos
+                    let usb_reader = USBReader::new().unwrap();
+                    let stop_flag = Arc::new(AtomicBool::new(true));
 
-                // clona o VPen para usar no callback
-                let vpen_clone = vpen.clone();
+                    let pen_keys: Vec<Key> = vec![
+                        key_from_str(&cfg.actions.pen).unwrap(),
+                        key_from_str(&cfg.actions.stylus).unwrap(),
+                        key_from_str(&cfg.actions.pen_touch).unwrap(),
+                    ];
 
-                usb_reader
-                    .start(device, endpoint, move |buf| {
-                        println!("Recebi pacote: {:?}", buf);
-
-                        if buf.len() >= 8 && (buf[1] == 192 || buf[1] == 193) {
-                            let pen_x = (buf[5] as i32 * 255 + buf[4] as i32);
-                            let pen_y = (buf[3] as i32 * 255 + buf[2] as i32);
-                            let pen_pressure = (buf[7] as i32 * 255 + buf[6] as i32);
-                            let touching = buf[1] != 192;
-
-                            if let Err(e) = vpen_clone.emit(pen_x, pen_y, pen_pressure, touching) {
-                                eprintln!("Erro emitindo evento: {e}");
-                            }
-                        }
-                    })
+                    let mut vpen = VPen::new(
+                        cfg.pen.max_x as i32,
+                        cfg.pen.max_y as i32,
+                        cfg.pen.max_pressure as i32,
+                        cfg.pen.resolution_x as i32,
+                        cfg.pen.resolution_y as i32,
+                        &pen_keys,
+                        &cfg.xinput_name,
+                    )
                     .unwrap();
+
+                    {
+                        let mut guard = STOP_FLAG.get_or_init(|| Mutex::new(None)).lock().unwrap();
+                        *guard = Some(stop_flag.clone());
+                    }
+
+                    // Clona o VPen para usar no callback
+                    let vpen_clone = vpen.clone();
+                    let tx_socket = tx_socket.clone();
+                    //let stop_clone = stop_flag.clone();
+
+                    let translator = TabletM100Translator;
+
+                    usb_reader
+                        .start(device, endpoint, stop_flag.clone(), move |buf| {
+                            println!("Recebi pacote: {:?}", buf);
+
+                            let emit_flow = translator.conv(&buf);
+
+                            for emit in emit_flow {
+                                match emit {
+                                    EmitCommand::Pen { x, y, pressure, touch } => {
+                                        if let Err(e) = vpen_clone.emit(x, y, pressure, touch) {
+                                            eprintln!("Erro emitindo evento: {e}");
+                                        }
+                                        let _ = tx_socket.send(buf.clone()); // ou serializar o comando
+                                    }
+                                    EmitCommand::Btn { key, pressed } => {
+                                        //if let Err(e) = vbtn_clone.emit_raw(key, pressed) {
+                                        //    eprintln!("Erro emitindo botão: {e}");
+                                        //}
+                                        let _ = tx_socket.send(buf.clone()); // idem
+                                    }
+                                }
+                            }
+
+ 
+                        })
+                        .unwrap();
+                }
             }
-            //USBReader::new(device, endpoint)
-        }
-        CustomHotplugEvent::DeviceLeft => {
-            println!(
-                "Callback: dispositivo desconectado {:?}",
-                device.device_descriptor().unwrap()
-            );
+            CustomHotplugEvent::DeviceLeft => {
+                println!(
+                    "Callback: dispositivo desconectado {:?}",
+                    device.device_descriptor().unwrap()
+                );
+
+                if let Some(flag) = STOP_FLAG
+                    .get_or_init(|| Mutex::new(None))
+                    .lock()
+                    .unwrap()
+                    .take()
+                {
+                    flag.store(false, Ordering::SeqCst);
+                    println!("Dispositivo desconectado: reader parado.");
+                }
+            }
         }
     });
 
     println!("Main continua rodando o loop principal...");
 
-    //    let btn_keys = [Key::KEY_LEFTCTRL, Key::KEY_Z, Key::KEY_C];
-    //    let mut vbtn = VBtn::new(&btn_keys, "10moons-pen-buttons").unwrap();
-
-    // Exemplo: move a caneta
-    //vpen.emit(1000, 2000, 500, true).unwrap();
-    //vpen.emit(750, 1500, 500, true).unwrap();
-    //vpen.emit(500, 1000, 500, true).unwrap();
-    //vpen.emit(250, 500, 500, true).unwrap();
-
-    // Simula alguns movimentos e toques
-    //vpen.emit(1000, 2000, 500, true).unwrap();
-    //vpen.emit(2000, 3000, 1000, true).unwrap();
-    //vpen.emit(3000, 1000, 1500, false).unwrap();
-
-    // Exemplo: pressiona um botão
-    //vbtn.emit(Key::KEY_C, 1).unwrap(); // 1 = pressionado
-    //vbtn.emit(Key::KEY_C, 0).unwrap(); // 0 = liberado
-
     loop {
+        if let Some(cmd) = socket_server.try_recv_command() {
+            println!("Comando recebido via socket: {}", cmd);
+        }
         // outras lógicas da aplicação (socket, config, etc.)
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
 }
-
-// buf: &mut [u8]
