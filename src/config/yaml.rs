@@ -4,18 +4,19 @@ use std::path::Path;
 use std::error::Error;
 
 /// Config principal
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub xinput_name: String,
     pub vendor_id: u16,
     pub product_id: u16,
+    pub interface: u8,
     pub pen: PenConfig,
     pub actions: ActionsConfig,
     pub settings: SettingsConfig,
 }
 
 /// Configuração da caneta
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PenConfig {
     pub max_x: u32,
     pub max_y: u32,
@@ -25,16 +26,16 @@ pub struct PenConfig {
 }
 
 /// Configuração de ações
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ActionsConfig {
     pub pen: String,
-    pub sylus: String,
+    pub stylus: String,
     pub pen_touch: String,
     pub tablet_buttons: Vec<String>,
 }
 
 /// Configurações gerais
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SettingsConfig {
     pub swap_axis: bool,
     pub swap_direction_x: bool,
