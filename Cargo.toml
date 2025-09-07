@@ -1,0 +1,14 @@
+[package]
+name = "tablet_driver_rust"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rusb = "0.9"         # acesso ao USB
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"   # leitura do config.yaml
+evdev = "0.12"       # criar dispositivos virtuais / uinput
+thiserror = "1.0"    # para tratar erros
+log = "0.4"          # logging
+env_logger = "0.11"  # logger simples
+anyhow = "1.0"       # erros mais fáceis de lidar
