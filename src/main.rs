@@ -32,6 +32,11 @@ fn key_from_str(name: &str) -> Option<Key> {
         ("BTN_TOOL_PEN", Key::BTN_TOOL_PEN),
         ("BTN_STYLUS", Key::BTN_STYLUS),
         ("BTN_TOUCH", Key::BTN_TOUCH),
+        ("KEY_LEFTCTRL", Key::KEY_LEFTCTRL),
+        ("KEY_Z", Key::KEY_Z),
+        ("KEY_A", Key::KEY_A),
+        ("KEY_C", Key::KEY_C),
+        ("KEY_D", Key::KEY_D),
         // se precisar de mais, só adicionar
     ]
     .into_iter()
@@ -109,7 +114,7 @@ fn main() {
                     let tx_socket = tx_socket.clone();
                     //let stop_clone = stop_flag.clone();
 
-                    let translator = TabletM100Translator;
+                    let translator = TabletM100Translator::new(Arc::new(Mutex::new(cfg.clone())));
 
                     usb_reader
                         .start(device, endpoint, stop_flag.clone(), move |buf| {

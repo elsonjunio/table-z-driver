@@ -1,3 +1,6 @@
+use std::sync::{Arc, Mutex};
+
+
 #[derive(Debug, Clone)]
 pub enum EmitCommand {
     Pen {
