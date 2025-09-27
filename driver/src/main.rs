@@ -1,16 +1,29 @@
+mod com;
 mod config;
 mod hotplug;
 mod reader;
-mod virtual_device;
-mod com;
 mod translator;
+mod virtual_device;
+
+use std::str::FromStr;
+use evdev::{EvdevEnum, Key};
 
 use crate::{
-    com::socket::SocketServer, config::Config, hotplug::{hotplug::CustomHotplugEvent, HotPlugHandler}, reader::USBReader, translator::{tablet_m100_translator::TabletM100Translator, translator::EmitCommand, translator::Translator}, virtual_device::{VBtn, VPen}
+    com::socket::SocketServer,
+    config::Config,
+    hotplug::{HotPlugHandler, hotplug::CustomHotplugEvent},
+    reader::USBReader,
+    translator::{
+        tablet_m100_translator::TabletM100Translator, translator::EmitCommand,
+        translator::Translator,
+    },
+    virtual_device::{VBtn, VPen},
 };
 use std::path::Path;
+//use bincode;
 
-use evdev::Key;
+use serde::{Serialize, Deserialize};
+use serde_json;
 
 use std::sync::{
     Arc, Mutex, OnceLock,
@@ -19,7 +32,6 @@ use std::sync::{
 
 use std::collections::HashMap;
 
-
 static STOP_FLAG: OnceLock<Mutex<Option<Arc<AtomicBool>>>> = OnceLock::new();
 
 fn init_globals() {
@@ -27,22 +39,11 @@ fn init_globals() {
     STOP_FLAG.get_or_init(|| Mutex::new(None));
 }
 
-fn key_from_str(name: &str) -> Option<Key> {
-    let map: HashMap<&'static str, Key> = [
-        ("BTN_TOOL_PEN", Key::BTN_TOOL_PEN),
-        ("BTN_STYLUS", Key::BTN_STYLUS),
-        ("BTN_TOUCH", Key::BTN_TOUCH),
-        ("KEY_LEFTCTRL", Key::KEY_LEFTCTRL),
-        ("KEY_Z", Key::KEY_Z),
-        ("KEY_A", Key::KEY_A),
-        ("KEY_C", Key::KEY_C),
-        ("KEY_D", Key::KEY_D),
-        // se precisar de mais, só adicionar
-    ]
-    .into_iter()
-    .collect();
-
-    map.get(name).copied()
+fn all_keys() -> Vec<Key> {
+    // keycodes válidos vão de 0 até 0x2FF
+    (0..=0x2FFu16)
+        .map(Key::new)
+        .collect()
 }
 
 fn main() {
@@ -88,12 +89,12 @@ fn main() {
                     let stop_flag = Arc::new(AtomicBool::new(true));
 
                     let pen_keys: Vec<Key> = vec![
-                        key_from_str(&cfg.actions.pen).unwrap(),
-                        key_from_str(&cfg.actions.stylus).unwrap(),
-                        key_from_str(&cfg.actions.pen_touch).unwrap(),
+                        Key::from_str(&cfg.actions.pen).unwrap(),
+                        Key::from_str(&cfg.actions.stylus).unwrap(),
+                        Key::from_str(&cfg.actions.pen_touch).unwrap(),
                     ];
 
-                    let mut vpen = VPen::new(
+                    let vpen = VPen::new(
                         cfg.pen.max_x as i32,
                         cfg.pen.max_y as i32,
                         cfg.pen.max_pressure as i32,
@@ -109,37 +110,52 @@ fn main() {
                         *guard = Some(stop_flag.clone());
                     }
 
+
+                    //--
+                    let keys = all_keys();
+                    let vbtn = VBtn::new(&keys, &cfg.xinput_name).unwrap();
+
                     // Clona o VPen para usar no callback
+                    let vbtn_clone = vbtn.clone();
                     let vpen_clone = vpen.clone();
                     let tx_socket = tx_socket.clone();
                     //let stop_clone = stop_flag.clone();
 
+                    
                     let translator = TabletM100Translator::new(Arc::new(Mutex::new(cfg.clone())));
-
                     usb_reader
                         .start(device, endpoint, stop_flag.clone(), move |buf| {
                             println!("Recebi pacote: {:?}", buf);
 
-                            let emit_flow = translator.conv(&buf);
+                            let emit_flow: Vec<EmitCommand> = translator.conv(&buf);
+
+                            println!("Pacote Convertido: {:?}", emit_flow);
 
                             for emit in emit_flow {
                                 match emit {
-                                    EmitCommand::Pen { x, y, pressure, touch } => {
+                                    EmitCommand::Pen {
+                                        x,
+                                        y,
+                                        pressure,
+                                        touch,
+                                    } => {
                                         if let Err(e) = vpen_clone.emit(x, y, pressure, touch) {
                                             eprintln!("Erro emitindo evento: {e}");
                                         }
-                                        let _ = tx_socket.send(buf.clone()); // ou serializar o comando
+
+                                        let encoded = serde_json::to_string(&emit).unwrap();
+                                        let _ = tx_socket.send(format!("{}\n", encoded).into_bytes());
+
                                     }
                                     EmitCommand::Btn { key, pressed } => {
-                                        //if let Err(e) = vbtn_clone.emit_raw(key, pressed) {
-                                        //    eprintln!("Erro emitindo botão: {e}");
-                                        //}
-                                        let _ = tx_socket.send(buf.clone()); // idem
+                                        if let Err(e) = vbtn_clone.emit(Key::new(key as u16), pressed) {
+                                            eprintln!("Erro emitindo botão: {e}");
+                                        }
+                                        let encoded = serde_json::to_string(&emit).unwrap();
+                                        let _ = tx_socket.send(format!("{}\n", encoded).into_bytes());
                                     }
                                 }
                             }
-
- 
                         })
                         .unwrap();
                 }

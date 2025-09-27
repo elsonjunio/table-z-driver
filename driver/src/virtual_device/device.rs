@@ -72,24 +72,29 @@ impl VPen {
 
 
 /// Estrutura para os botões da mesa
+#[derive(Clone)]
 pub struct VBtn {
-    pub device: evdev::uinput::VirtualDevice,
+    pub device: Arc<Mutex<evdev::uinput::VirtualDevice>>,
 }
 
 impl VBtn {
     pub fn new(keys: &[Key], name: &str) -> Result<Self> {
-        let mut dev = VirtualDeviceBuilder::new()?
+        let dev = VirtualDeviceBuilder::new()?
             .name(name)
             .with_keys(&AttributeSet::from_iter(keys.iter().cloned()))?
             .build()?;
 
-        Ok(Self { device: dev })
+        Ok(Self {
+            device: Arc::new(Mutex::new(dev)),
+        })
     }
 
     /// Emite evento de tecla
-    pub fn emit(&mut self, key: Key, value: i32) -> Result<()> {
-        let event = InputEvent::new(EventType::KEY, key.code(), value);
-        self.device.emit(&[event])?;
+    pub fn emit(&self, key: Key, value: bool) -> Result<()> {
+        let pressed = if value { 1 } else { 0 };
+        let event = InputEvent::new(EventType::KEY, key.code(), pressed);      
+        let mut dev: std::sync::MutexGuard<'_, evdev::uinput::VirtualDevice> = self.device.lock().unwrap();
+        dev.emit(&[event])?;
         Ok(())
     }
 }
