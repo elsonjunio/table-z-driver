@@ -11,3 +11,5 @@ npm create tauri-app@latest
 cd ui
 npm install
 npm run tauri dev
+
+cargo watch -x run
