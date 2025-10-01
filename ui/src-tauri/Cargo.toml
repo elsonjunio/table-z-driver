@@ -22,4 +22,5 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
+table_z_config = { path = "../../table_z_config" }
+serde_yaml = "0.9"

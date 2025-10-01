@@ -14,6 +14,7 @@ interface BtnStatus {
   Btn:{
   key: number,
   pressed: boolean,
+  index: number,
   }
 }
 
@@ -31,6 +32,7 @@ function StatusTab() {
     Btn:{
     key: 0,
     pressed: false,
+    index: 0
     }
   });
 
@@ -66,7 +68,7 @@ function StatusTab() {
         </div>
         <div>
           <strong>Botões:</strong>{" "}
-           {btn_status.Btn.pressed ? btn_status.Btn.key : "Nenhum"} 
+           {btn_status.Btn.pressed ? btn_status.Btn.index : "Nenhum"} 
         </div>
       </div>
 

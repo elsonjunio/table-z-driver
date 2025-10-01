@@ -5,6 +5,8 @@ use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use evdev::Key;
 
+use table_z_config::Config;
+
 
 
 #[derive(Debug, Clone, Encode, Decode, Serialize, Deserialize)]
@@ -18,12 +20,14 @@ pub enum EmitCommand {
     Btn {
         key: i32,
         pressed: bool,
+        index: usize,
     },
 }
 
 pub trait Translator: Send + Sync {
     /// Traduz um pacote da USB em uma lista de comandos
     fn conv(&self, buf: &Vec<u8>) -> Vec<EmitCommand>;
+    fn update_from_config(&mut self, cfg: &Config);
 }
 
 fn key_from_str(name: &str) -> Option<Key> {

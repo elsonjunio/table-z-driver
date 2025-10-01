@@ -1,5 +1,5 @@
 [workspace]
 members = [
-    "driver",
+    "driver", "table_z_config",
     "ui/src-tauri"
 ]

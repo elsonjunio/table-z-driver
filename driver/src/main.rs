@@ -10,7 +10,7 @@ use evdev::{EvdevEnum, Key};
 
 use crate::{
     com::socket::SocketServer,
-    config::Config,
+    //config::Config,
     hotplug::{HotPlugHandler, hotplug::CustomHotplugEvent},
     reader::USBReader,
     translator::{
@@ -33,6 +33,8 @@ use std::sync::{
 use std::collections::HashMap;
 
 static STOP_FLAG: OnceLock<Mutex<Option<Arc<AtomicBool>>>> = OnceLock::new();
+
+use table_z_config::Config;
 
 fn init_globals() {
     // inicializa o OnceLock na primeira chamada
@@ -64,8 +66,13 @@ fn main() {
 
     println!("Configuração carregada:\n{:#?}", cfg);
 
+    let translator = Arc::new(Mutex::new(TabletM100Translator::new(
+    Arc::new(Mutex::new(cfg.clone())),
+    )));
+
     HotPlugHandler::init({
         let cfg = cfg.clone(); // precisa do derive Clone em Config
+        let translator = translator.clone();
 
         move |device, event| match event {
             CustomHotplugEvent::DeviceArrived => {
@@ -121,13 +128,14 @@ fn main() {
                     let tx_socket = tx_socket.clone();
                     //let stop_clone = stop_flag.clone();
 
+                    let translator = translator.clone();
                     
-                    let translator = TabletM100Translator::new(Arc::new(Mutex::new(cfg.clone())));
                     usb_reader
                         .start(device, endpoint, stop_flag.clone(), move |buf| {
                             println!("Recebi pacote: {:?}", buf);
 
-                            let emit_flow: Vec<EmitCommand> = translator.conv(&buf);
+                            //let emit_flow: Vec<EmitCommand> = translator.conv(&buf);
+                            let emit_flow: Vec<EmitCommand> = translator.lock().unwrap().conv(&buf);
 
                             println!("Pacote Convertido: {:?}", emit_flow);
 
@@ -147,7 +155,7 @@ fn main() {
                                         let _ = tx_socket.send(format!("{}\n", encoded).into_bytes());
 
                                     }
-                                    EmitCommand::Btn { key, pressed } => {
+                                    EmitCommand::Btn { key, pressed, index} => {
                                         if let Err(e) = vbtn_clone.emit(Key::new(key as u16), pressed) {
                                             eprintln!("Erro emitindo botão: {e}");
                                         }
@@ -180,10 +188,16 @@ fn main() {
     });
 
     println!("Main continua rodando o loop principal...");
+    let translator_for_loop = translator.clone();
 
     loop {
         if let Some(cmd) = socket_server.try_recv_command() {
             println!("Comando recebido via socket: {}", cmd);
+            if let Ok(new_cfg) = serde_json::from_str::<Config>(&cmd) {
+                println!("Atualizando configuração em tempo de execução!");
+                let mut tr = translator_for_loop.lock().unwrap();
+                tr.update_from_config(&new_cfg);
+            }
         }
         // outras lógicas da aplicação (socket, config, etc.)
         std::thread::sleep(std::time::Duration::from_secs(1));
