@@ -3748,6 +3748,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "table_z_config"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_yaml",
+]
+
+[[package]]
 name = "tablet_driver_rust"
 version = "0.1.0"
 dependencies = [
@@ -3760,6 +3768,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "table_z_config",
  "thiserror 1.0.69",
 ]
 
@@ -4442,6 +4451,8 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "serde_yaml",
+ "table_z_config",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",

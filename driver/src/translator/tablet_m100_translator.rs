@@ -4,9 +4,10 @@ use std::collections::HashSet;
 use evdev::Key;
 
 use crate::{
-    config::Config,
     translator::translator::{EmitCommand, Translator},
 };
+
+use table_z_config::Config;
 
 pub struct TabletM100Translator {
     // Propriedades do hardware
@@ -143,6 +144,38 @@ impl TabletM100Translator {
 //}
 
 impl Translator for TabletM100Translator {
+
+    fn update_from_config(&mut self, cfg: &Config) {
+        use evdev::Key;
+        use std::str::FromStr;
+
+        self.pen_max_x = cfg.pen.max_x;
+        self.pen_max_y = cfg.pen.max_y;
+        self.pen_max_pressure = cfg.pen.max_pressure;
+        self.pen_resolution_x = cfg.pen.resolution_x;
+        self.pen_resolution_y = cfg.pen.resolution_y;
+
+        self.action_pen = Key::from_str(&cfg.actions.pen).unwrap();
+        self.action_stylus = Key::from_str(&cfg.actions.stylus).unwrap();
+        self.action_pen_touch = Key::from_str(&cfg.actions.pen_touch).unwrap();
+
+        self.action_tablet_buttons = cfg
+            .actions
+            .tablet_buttons
+            .iter()
+            .map(|combo| {
+                combo
+                    .split('+')
+                    .filter_map(|k| Key::from_str(k).ok())
+                    .collect::<Vec<Key>>()
+            })
+            .collect();
+
+        self.swap_axis = cfg.settings.swap_axis;
+        self.swap_direction_x = cfg.settings.swap_direction_x;
+        self.swap_direction_y = cfg.settings.swap_direction_y;
+    }
+
     fn conv(&self, buf: &Vec<u8>) -> Vec<EmitCommand> {
         let mut out = Vec::new();
 
@@ -194,10 +227,10 @@ impl Translator for TabletM100Translator {
                         5001 => Key::BTN_STYLUS2,
                         _ => continue,
                     };
-                    out.push(EmitCommand::Btn { key: key.code() as i32, pressed: true });
+                    out.push(EmitCommand::Btn { key: key.code() as i32, pressed: true, index: idx.clone() });
                 } else if let Some(keys) = self.action_tablet_buttons.get(*idx) {
                     for k in keys {
-                        out.push(EmitCommand::Btn { key: k.code() as i32, pressed: true });
+                        out.push(EmitCommand::Btn { key: k.code() as i32, pressed: true, index: idx.clone() });
                     }
                 }
             }
@@ -210,10 +243,10 @@ impl Translator for TabletM100Translator {
                         5001 => Key::BTN_STYLUS2,
                         _ => continue,
                     };
-                    out.push(EmitCommand::Btn { key: key.code() as i32, pressed: false });
+                    out.push(EmitCommand::Btn { key: key.code() as i32, pressed: false, index: idx.clone() });
                 } else if let Some(keys) = self.action_tablet_buttons.get(*idx) {
                     for k in keys {
-                        out.push(EmitCommand::Btn { key: k.code() as i32, pressed: false });
+                        out.push(EmitCommand::Btn { key: k.code() as i32, pressed: false, index: idx.clone() });
                     }
                 }
             }
