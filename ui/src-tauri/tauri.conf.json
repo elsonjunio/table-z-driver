@@ -15,7 +15,11 @@
         "title": "ui",
         "width": 800,
         "height": 600,
-        "label": "main"
+        "label": "main",
+        "decorations": true, 
+        "minimizable": false,   
+        "resizable": false,
+        "fullscreen": false
       }
     ],
     "security": {

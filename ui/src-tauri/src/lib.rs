@@ -189,6 +189,9 @@ pub fn run() {
 
         app.manage(driver);
 
+        let window = app_handle.get_webview_window("main").unwrap();
+        let _ = window.hide();
+
         Ok(())
 
     })
@@ -230,7 +233,6 @@ pub fn run() {
                             }
                             "quit" => {
                                 println!("quit menu item was clicked");
-                                //app_handle.exit(0);
                                 std::process::exit(0);
                             }
                             _ => {
@@ -265,9 +267,25 @@ pub fn run() {
             tauri::RunEvent::ExitRequested { api, .. } => {
                 api.prevent_exit();
             }
+
+            tauri::RunEvent::WindowEvent { label, event, .. } => {
+            if label == "main" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    // impede o fechamento
+                    api.prevent_close();
+                    
+                    // esconde a janela
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
+            }
+        }
+            
             
             _ => {}
         }
+
     });
         
 }

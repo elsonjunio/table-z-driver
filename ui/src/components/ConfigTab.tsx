@@ -56,10 +56,12 @@ function ConfigTab() {
     settings: { swap_axis: false, swap_direction_x: false, swap_direction_y: false },
   });
 
-
   const [buttons, setButtons] = useState<Array<[string, string]>>(
     Array(8).fill(["None", "None"])
   );
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
 
   function updateButton(index: number, pos: 0 | 1, value: string) {
     setButtons((prev) => {
@@ -70,16 +72,12 @@ function ConfigTab() {
     });
   }
 
-
   useEffect(() => {
     async function loadConfig() {
       try {
         const cfg = await invoke<Config>("get_config");
-        console.log(cfg);
-
         setConfig(cfg);
 
-        // converte ["Ctrl+Z", "Alt+Tab", "A", ""] -> [["Ctrl","Z"],["Alt","Tab"],["A","None"],["None","None"],...]
         const parsed = (cfg.actions.tablet_buttons || []).map((combo: string) => {
           if (!combo) return ["None", "None"];
           const parts = combo.split("+");
@@ -95,95 +93,147 @@ function ConfigTab() {
     loadConfig();
   }, []);
 
-async function saveConfig() {
-  const mappedButtons = buttons.map(([k1, k2]) =>
-    [k1, k2].filter(k => k !== "None").join("+")
-  );
-  
-    const newConfig: Config = {
-      ...config,
-      actions: {
-        ...config.actions,
-        tablet_buttons: mappedButtons,
-      },
-      settings: {
-        ...config.settings,
-        swap_direction_x: config.settings.swap_direction_x,
-        swap_direction_y: config.settings.swap_direction_y,
-      },
-    };
+  async function saveConfig() {
+    setIsSaving(true);
+    setSaveStatus("idle");
+    
+    try {
+      const mappedButtons = buttons.map(([k1, k2]) =>
+        [k1, k2].filter(k => k !== "None").join("+")
+      );
+      
+      const newConfig: Config = {
+        ...config,
+        actions: {
+          ...config.actions,
+          tablet_buttons: mappedButtons,
+        },
+      };
 
-    await invoke("update_config", { config: newConfig });
-
+      await invoke("update_config", { config: newConfig });
+      setSaveStatus("success");
+      
+      // Reset success status after 3 seconds
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    } catch (e) {
+      console.error("Erro ao salvar:", e);
+      setSaveStatus("error");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
-    <div>
-      <h2>Configuração</h2>
-      <div className="form-group">
-        <label>
-          <input
-            type="checkbox"
-            checked={config.settings.swap_direction_x}
-            onChange={(e) =>
-              setConfig((prev) => ({
-                ...prev,
-                settings: { ...prev.settings, swap_direction_x: e.target.checked },
-              }))
-            }
-          />
-          Inverter eixo X
-        </label>
-      </div>
-      <div className="form-group">
-        <label>
-          <input
-            type="checkbox"
-            checked={config.settings.swap_direction_y}
-            onChange={(e) =>
-              setConfig((prev) => ({
-                ...prev,
-                settings: { ...prev.settings, swap_direction_y: e.target.checked },
-              }))
-            }
-          />
-          Inverter eixo Y
-        </label>
+    <div className="space-y-6">
+      <h2 className="text-xl font-semibold text-gray-800">Configurações</h2>
+      
+      {/* Configurações Gerais */}
+      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+        <h3 className="text-lg font-medium text-gray-700 mb-4">Configurações de Eixo</h3>
+        
+        <div className="space-y-3">
+          <label className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-300 hover:border-blue-400 transition-colors cursor-pointer">
+            <input
+              type="checkbox"
+              checked={config.settings.swap_direction_x}
+              onChange={(e) =>
+                setConfig((prev) => ({
+                  ...prev,
+                  settings: { ...prev.settings, swap_direction_x: e.target.checked },
+                }))
+              }
+              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+            />
+            <span className="text-gray-700 font-medium">Inverter Direção do Eixo X</span>
+          </label>
+          
+          <label className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-300 hover:border-blue-400 transition-colors cursor-pointer">
+            <input
+              type="checkbox"
+              checked={config.settings.swap_direction_y}
+              onChange={(e) =>
+                setConfig((prev) => ({
+                  ...prev,
+                  settings: { ...prev.settings, swap_direction_y: e.target.checked },
+                }))
+              }
+              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+            />
+            <span className="text-gray-700 font-medium">Inverter Direção do Eixo Y</span>
+          </label>
+        </div>
       </div>
 
-      <div>
-        <h3>Mapeamento de Botões</h3>
-        {buttons.map((combo, idx) => (
-          <div
-            key={idx}
-            style={{ display: "flex", gap: "1rem", marginBottom: "0.5rem" }}
-          >
-            <span>Botão {idx + 1}</span>
-            <select
-              value={combo[0]}
-              onChange={(e) => updateButton(idx, 0, e.target.value)}
+      {/* Mapeamento de Botões */}
+      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+        <h3 className="text-lg font-medium text-gray-700 mb-4">Mapeamento de Botões</h3>
+        
+        <div className="space-y-3">
+          {buttons.map((combo, idx) => (
+            <div
+              key={idx}
+              className="flex items-center space-x-4 p-3 bg-white rounded-lg border border-gray-300 hover:border-blue-400 transition-colors"
             >
-              {KEY_OPTIONS.map((k) => (
-                <option key={k} value={k}>
-                  {k}
-                </option>
-              ))}
-            </select>
-            <select
-              value={combo[1]}
-              onChange={(e) => updateButton(idx, 1, e.target.value)}
-            >
-              {KEY_OPTIONS.map((k) => (
-                <option key={k} value={k}>
-                  {k}
-                </option>
-              ))}
-            </select>
+              <span className="w-20 text-sm font-medium text-gray-600">
+                Botão {idx + 1}
+              </span>
+              
+              <select
+                value={combo[0]}
+                onChange={(e) => updateButton(idx, 0, e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {KEY_OPTIONS.map((k) => (
+                  <option key={k} value={k}>
+                    {k.replace('KEY_', '')}
+                  </option>
+                ))}
+              </select>
+              
+              <span className="text-gray-400">+</span>
+              
+              <select
+                value={combo[1]}
+                onChange={(e) => updateButton(idx, 1, e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                {KEY_OPTIONS.map((k) => (
+                  <option key={k} value={k}>
+                    {k.replace('KEY_', '')}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Save Button */}
+      <div className="flex items-center space-x-4">
+        <button 
+          onClick={saveConfig}
+          disabled={isSaving}
+          className={`px-6 py-3 rounded-lg font-medium transition-all duration-200 ${
+            isSaving 
+              ? "bg-gray-400 cursor-not-allowed" 
+              : "bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+          }`}
+        >
+          {isSaving ? "Salvando..." : "💾 Salvar Configurações"}
+        </button>
+        
+        {saveStatus === "success" && (
+          <div className="flex items-center space-x-2 text-green-600">
+            <span>✅ Configurações salvas com sucesso!</span>
           </div>
-        ))}
+        )}
+        
+        {saveStatus === "error" && (
+          <div className="flex items-center space-x-2 text-red-600">
+            <span>❌ Erro ao salvar configurações</span>
+          </div>
+        )}
       </div>
-
-      <button onClick={saveConfig}>Salvar</button>
     </div>
   );
 }
