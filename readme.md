@@ -195,9 +195,9 @@ sudo udevadm control --reload-rules
 ```
 
 **Dispositivo não detectado:**
-    Verifique se a mesa está conectada via USB
-    Confirme vendor_id e product_id com lsusb
-    Reinicie o serviço udev: sudo service udev restart
+  - Verifique se a mesa está conectada via USB
+  - Confirme vendor_id e product_id com lsusb
+  - Reinicie o serviço udev: sudo service udev restart
 
 
 ### 🙏 Agradecimentos
