@@ -2,10 +2,10 @@
 
 <div align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/elsonjunio/table-z-driver/blob/main/table_z_utils.yaml">
-    <source media="(prefers-color-scheme: light)" srcset="https://github.com/elsonjunio/table-z-driver/blob/main/table_z_utils.yaml">
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/elsonjunio/table-z-driver/blob/main/table_image.png?raw=true">
+    <source media="(prefers-color-scheme: light)" srcset="https://github.com/elsonjunio/table-z-driver/blob/main/table_image.png?raw=true">
     <img alt="TableZ Driver"
-         src="https://github.com/elsonjunio/table-z-driver/blob/main/table_z_utils.yaml"
+         src="https://github.com/elsonjunio/table-z-driver/blob/main/table_image.png?raw=true"
          width="50%">
   </picture>
 
