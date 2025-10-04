@@ -1,11 +1,12 @@
-use std::{str::FromStr, sync::{Arc, Mutex}};
 use std::collections::HashSet;
+use std::{
+    str::FromStr,
+    sync::{Arc, Mutex},
+};
 
 use evdev::Key;
 
-use crate::{
-    translator::translator::{EmitCommand, Translator},
-};
+use crate::translator::translator::{EmitCommand, Translator};
 
 use table_z_config::Config;
 
@@ -28,7 +29,7 @@ pub struct TabletM100Translator {
     swap_direction_x: bool,
     swap_direction_y: bool,
 
-    pressed_keys: Mutex<HashSet<usize>>, // índice de action_tablet_buttons
+    pressed_keys: Mutex<HashSet<usize>>,
 }
 
 impl TabletM100Translator {
@@ -49,9 +50,7 @@ impl TabletM100Translator {
             .map(|combo_str| {
                 combo_str
                     .split('+')
-                    .map(|s| {
-                        Key::from_str(s.trim()).expect("Chave inválida")
-                    })
+                    .map(|s| Key::from_str(s.trim()).expect("Chave inválida"))
                     .collect::<Vec<Key>>()
             })
             .collect::<Vec<Vec<Key>>>();
@@ -81,70 +80,7 @@ impl TabletM100Translator {
     }
 }
 
-//impl Translator for TabletM100Translator {
-//    fn conv(&self, buf: &Vec<u8>) -> Vec<EmitCommand> {
-//        let mut out = Vec::new();
-//
-//        if buf.len() >= 8 && (buf[1] == 192 || buf[1] == 193) {
-//
-//
-//            let raw_x = (buf[5] as i32 * 255 + buf[4] as i32);
-//            let raw_y = (buf[3] as i32 * 255 + buf[2] as i32);
-//            let raw_pressure = (buf[7] as i32 * 255 + buf[6] as i32);
-//
-//            let mut x = raw_x;
-//            let mut y = raw_y;
-//            let mut pressure = raw_pressure;
-//
-//            // Aplica swap de eixo
-//            if self.swap_axis {
-//                std::mem::swap(&mut x, &mut y);
-//            }
-//
-//            // Aplica inversão de direção
-//            if self.swap_direction_x {
-//                x = self.pen_max_x as i32 - x;
-//            }
-//
-//            if self.swap_direction_y {
-//                y = self.pen_max_y as i32 - y;
-//            }
-//
-//            let touching = buf[1] != 192;
-//
-//            out.push(EmitCommand::Pen {
-//                x,
-//                y,
-//                pressure,
-//                touch: touching,
-//            });
-//        }
-//        else if buf.len() >= 8 && buf[0] == 2 {
-//    
-//            let mut key_index: Option<usize> = None;
-//
-//            if buf[1] == 1 && buf[3] == 28 {
-//                out.push(EmitCommand::Btn {
-//                    key: Key::BTN_STYLUS.code() as i32,
-//                    pressed: true
-//                });
-//            }
-//
-//            if buf[1] == 1 && buf[3] == 29 {
-//                out.push(EmitCommand::Btn {
-//                    key: Key::BTN_STYLUS2.code() as i32,
-//                    pressed: true
-//                });
-//            }
-//
-//        }
-//
-//        out
-//    }
-//}
-
 impl Translator for TabletM100Translator {
-
     fn update_from_config(&mut self, cfg: &Config) {
         use evdev::Key;
         use std::str::FromStr;
@@ -181,19 +117,30 @@ impl Translator for TabletM100Translator {
 
         // --- Movimento da caneta ---
         if buf.len() >= 8 && (buf[1] == 192 || buf[1] == 193) {
-            let raw_x = (buf[5] as i32 * 255 + buf[4] as i32);
-            let raw_y = (buf[3] as i32 * 255 + buf[2] as i32);
-            let raw_pressure = (buf[7] as i32 * 255 + buf[6] as i32);
+            let raw_x = buf[5] as i32 * 255 + buf[4] as i32;
+            let raw_y = buf[3] as i32 * 255 + buf[2] as i32;
+            let raw_pressure = buf[7] as i32 * 255 + buf[6] as i32;
 
             let mut x = raw_x;
             let mut y = raw_y;
-            let mut pressure = raw_pressure;
+            let pressure = raw_pressure;
 
-            if self.swap_axis { std::mem::swap(&mut x, &mut y); }
-            if self.swap_direction_x { x = self.pen_max_x as i32 - x; }
-            if self.swap_direction_y { y = self.pen_max_y as i32 - y; }
+            if self.swap_axis {
+                std::mem::swap(&mut x, &mut y);
+            }
+            if self.swap_direction_x {
+                x = self.pen_max_x as i32 - x;
+            }
+            if self.swap_direction_y {
+                y = self.pen_max_y as i32 - y;
+            }
 
-            out.push(EmitCommand::Pen { x, y, pressure, touch: buf[1] != 192 });
+            out.push(EmitCommand::Pen {
+                x,
+                y,
+                pressure,
+                touch: buf[1] != 192,
+            });
         }
         // --- Botões ---
         else if buf.len() >= 8 && buf[0] == 2 {
@@ -204,14 +151,14 @@ impl Translator for TabletM100Translator {
             let button_mapping: Vec<(u8, u8, usize)> = vec![
                 (1, 28, 5000), // BTN_STYLUS
                 (1, 29, 5001), // BTN_STYLUS2
-                (1, 86, 0), // btn 1    
-                (1, 87, 1), // btn 2
-                (0, 47, 2), // btn 3
-                (0, 48, 3), // btn 4
-                (0, 43, 4), // btn 5
-                (0, 44, 5), // btn 6
-                (1, 0, 6), // btn 7
-                (4, 0, 7), // btn 8
+                (1, 86, 0),    // btn 1
+                (1, 87, 1),    // btn 2
+                (0, 47, 2),    // btn 3
+                (0, 48, 3),    // btn 4
+                (0, 43, 4),    // btn 5
+                (0, 44, 5),    // btn 6
+                (1, 0, 6),     // btn 7
+                (4, 0, 7),     // btn 8
             ];
 
             for (b1, b3, idx) in button_mapping.iter() {
@@ -227,14 +174,22 @@ impl Translator for TabletM100Translator {
                         5001 => Key::BTN_STYLUS2,
                         _ => continue,
                     };
-                    out.push(EmitCommand::Btn { key: key.code() as i32, pressed: true, index: idx.clone() });
+                    out.push(EmitCommand::Btn {
+                        key: key.code() as i32,
+                        pressed: true,
+                        index: idx.clone(),
+                    });
                 } else if let Some(keys) = self.action_tablet_buttons.get(*idx) {
                     for k in keys {
-                        out.push(EmitCommand::Btn { key: k.code() as i32, pressed: true, index: idx.clone() });
+                        out.push(EmitCommand::Btn {
+                            key: k.code() as i32,
+                            pressed: true,
+                            index: idx.clone(),
+                        });
                     }
                 }
             }
-            
+
             // Mesma lógica para release:
             for idx in pressed_keys.difference(&current_keys) {
                 if *idx >= 5000 {
@@ -243,10 +198,18 @@ impl Translator for TabletM100Translator {
                         5001 => Key::BTN_STYLUS2,
                         _ => continue,
                     };
-                    out.push(EmitCommand::Btn { key: key.code() as i32, pressed: false, index: idx.clone() });
+                    out.push(EmitCommand::Btn {
+                        key: key.code() as i32,
+                        pressed: false,
+                        index: idx.clone(),
+                    });
                 } else if let Some(keys) = self.action_tablet_buttons.get(*idx) {
                     for k in keys {
-                        out.push(EmitCommand::Btn { key: k.code() as i32, pressed: false, index: idx.clone() });
+                        out.push(EmitCommand::Btn {
+                            key: k.code() as i32,
+                            pressed: false,
+                            index: idx.clone(),
+                        });
                     }
                 }
             }

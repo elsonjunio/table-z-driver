@@ -5,12 +5,11 @@ mod reader;
 mod translator;
 mod virtual_device;
 
+use evdev::Key;
 use std::str::FromStr;
-use evdev::{EvdevEnum, Key};
 
 use crate::{
     com::socket::SocketServer,
-    //config::Config,
     hotplug::{HotPlugHandler, hotplug::CustomHotplugEvent},
     reader::USBReader,
     translator::{
@@ -20,17 +19,13 @@ use crate::{
     virtual_device::{VBtn, VPen},
 };
 use std::path::Path;
-//use bincode;
 
-use serde::{Serialize, Deserialize};
 use serde_json;
 
 use std::sync::{
     Arc, Mutex, OnceLock,
     atomic::{AtomicBool, Ordering},
 };
-
-use std::collections::HashMap;
 
 static STOP_FLAG: OnceLock<Mutex<Option<Arc<AtomicBool>>>> = OnceLock::new();
 
@@ -43,9 +38,7 @@ fn init_globals() {
 
 fn all_keys() -> Vec<Key> {
     // keycodes válidos vão de 0 até 0x2FF
-    (0..=0x2FFu16)
-        .map(Key::new)
-        .collect()
+    (0..=0x2FFu16).map(Key::new).collect()
 }
 
 fn main() {
@@ -66,12 +59,12 @@ fn main() {
 
     println!("Configuração carregada:\n{:#?}", cfg);
 
-    let translator = Arc::new(Mutex::new(TabletM100Translator::new(
-    Arc::new(Mutex::new(cfg.clone())),
-    )));
+    let translator = Arc::new(Mutex::new(TabletM100Translator::new(Arc::new(Mutex::new(
+        cfg.clone(),
+    )))));
 
     HotPlugHandler::init({
-        let cfg = cfg.clone(); // precisa do derive Clone em Config
+        let cfg = cfg.clone();
         let translator = translator.clone();
 
         move |device, event| match event {
@@ -117,24 +110,19 @@ fn main() {
                         *guard = Some(stop_flag.clone());
                     }
 
-
-                    //--
                     let keys = all_keys();
                     let vbtn = VBtn::new(&keys, &cfg.xinput_name).unwrap();
 
-                    // Clona o VPen para usar no callback
                     let vbtn_clone = vbtn.clone();
                     let vpen_clone = vpen.clone();
                     let tx_socket = tx_socket.clone();
-                    //let stop_clone = stop_flag.clone();
 
                     let translator = translator.clone();
-                    
+
                     usb_reader
                         .start(device, endpoint, stop_flag.clone(), move |buf| {
                             println!("Recebi pacote: {:?}", buf);
 
-                            //let emit_flow: Vec<EmitCommand> = translator.conv(&buf);
                             let emit_flow: Vec<EmitCommand> = translator.lock().unwrap().conv(&buf);
 
                             println!("Pacote Convertido: {:?}", emit_flow);
@@ -152,15 +140,22 @@ fn main() {
                                         }
 
                                         let encoded = serde_json::to_string(&emit).unwrap();
-                                        let _ = tx_socket.send(format!("{}\n", encoded).into_bytes());
-
+                                        let _ =
+                                            tx_socket.send(format!("{}\n", encoded).into_bytes());
                                     }
-                                    EmitCommand::Btn { key, pressed, index} => {
-                                        if let Err(e) = vbtn_clone.emit(Key::new(key as u16), pressed) {
+                                    EmitCommand::Btn {
+                                        key,
+                                        pressed,
+                                        index: _,
+                                    } => {
+                                        if let Err(e) =
+                                            vbtn_clone.emit(Key::new(key as u16), pressed)
+                                        {
                                             eprintln!("Erro emitindo botão: {e}");
                                         }
                                         let encoded = serde_json::to_string(&emit).unwrap();
-                                        let _ = tx_socket.send(format!("{}\n", encoded).into_bytes());
+                                        let _ =
+                                            tx_socket.send(format!("{}\n", encoded).into_bytes());
                                     }
                                 }
                             }
@@ -199,7 +194,6 @@ fn main() {
                 tr.update_from_config(&new_cfg);
             }
         }
-        // outras lógicas da aplicação (socket, config, etc.)
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
 }

@@ -1,12 +1,11 @@
-use std::sync::{Arc, Mutex};
 use evdev::{
     AbsInfo, AbsoluteAxisType, AttributeSet, EventType, InputEvent, Key, UinputAbsSetup,
     uinput::VirtualDeviceBuilder,
 };
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 
-/// Estrutura para o dispositivo virtual da caneta
 #[derive(Clone)]
 pub struct VPen {
     pub device: Arc<Mutex<evdev::uinput::VirtualDevice>>,
@@ -50,12 +49,15 @@ impl VPen {
         })
     }
 
-    /// Emitir eventos de posição/pressão
     pub fn emit(&self, x: i32, y: i32, pressure: i32, touch: bool) -> Result<(), std::io::Error> {
         let events = [
             InputEvent::new(EventType::ABSOLUTE, AbsoluteAxisType::ABS_X.0, x),
             InputEvent::new(EventType::ABSOLUTE, AbsoluteAxisType::ABS_Y.0, y),
-            InputEvent::new(EventType::ABSOLUTE, AbsoluteAxisType::ABS_PRESSURE.0, pressure),
+            InputEvent::new(
+                EventType::ABSOLUTE,
+                AbsoluteAxisType::ABS_PRESSURE.0,
+                pressure,
+            ),
             InputEvent::new(
                 EventType::KEY,
                 Key::BTN_TOUCH.code(),
@@ -69,9 +71,6 @@ impl VPen {
     }
 }
 
-
-
-/// Estrutura para os botões da mesa
 #[derive(Clone)]
 pub struct VBtn {
     pub device: Arc<Mutex<evdev::uinput::VirtualDevice>>,
@@ -89,11 +88,11 @@ impl VBtn {
         })
     }
 
-    /// Emite evento de tecla
     pub fn emit(&self, key: Key, value: bool) -> Result<()> {
         let pressed = if value { 1 } else { 0 };
-        let event = InputEvent::new(EventType::KEY, key.code(), pressed);      
-        let mut dev: std::sync::MutexGuard<'_, evdev::uinput::VirtualDevice> = self.device.lock().unwrap();
+        let event = InputEvent::new(EventType::KEY, key.code(), pressed);
+        let mut dev: std::sync::MutexGuard<'_, evdev::uinput::VirtualDevice> =
+            self.device.lock().unwrap();
         dev.emit(&[event])?;
         Ok(())
     }

@@ -1,4 +1,4 @@
-use rusb::{Context, Device, DeviceHandle, Hotplug, HotplugBuilder, UsbContext};
+use rusb::{Context, Device};
 use anyhow::bail;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -50,24 +50,6 @@ impl USBReader {
 
         handle.set_active_configuration(1).ok();
         handle.claim_interface(iface)?;
-
-        //loop {
-        //    let mut buf = vec![0u8; max_packet_size];
-        //    match handle.read_interrupt(endpoint, &mut buf, timeout) {
-        //        Ok(size) => {
-        //            buf.truncate(size);
-        //            println!("Pacote: {:?}", buf);
-        //            callback(buf);
-        //        }
-        //        Err(rusb::Error::Timeout) => {
-        //            // nada chegou, normal
-        //        }
-        //        Err(e) => {
-        //            eprintln!("Erro na leitura: {:?}", e);
-        //             break; // sai do loop
-        //        }
-        //    }
-        //}
 
         // Thread de leitura
         std::thread::spawn(move || {

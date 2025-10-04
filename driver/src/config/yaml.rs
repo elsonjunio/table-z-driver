@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::Path;
-use std::error::Error;
+//use std::fs;
+//use std::path::Path;
+//use std::error::Error;
 
 /// Config principal
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -42,11 +42,11 @@ pub struct SettingsConfig {
     pub swap_direction_y: bool,
 }
 
-impl Config {
-    /// Lê o YAML e deserializa para Config
-    pub fn from_file(path: &Path) -> Result<Config, Box<dyn Error>> {
-        let content = fs::read_to_string(path)?;
-        let cfg: Config = serde_yaml::from_str(&content)?;
-        Ok(cfg)
-    }
-}
+//impl Config {
+//    /// Lê o YAML e deserializa para Config
+//    pub fn from_file(path: &Path) -> Result<Config, Box<dyn Error>> {
+//        let content = fs::read_to_string(path)?;
+//        let cfg: Config = serde_yaml::from_str(&content)?;
+//        Ok(cfg)
+//    }
+//}
