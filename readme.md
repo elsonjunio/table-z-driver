@@ -19,7 +19,7 @@ O código é baseado no projeto original em Python [10moons-driver](https://gith
 
 ### 🎯 Objetivos de Aprendizado
 
-- Domínio da linguagem Rust e seus conceitos de ownership/borrowing
+- Entendimento da linguagem Rust e seus conceitos de ownership/borrowing
 - Desenvolvimento de aplicações desktop com Tauri
 - Criação de interfaces gráficas com React + Tailwind CSS
 
