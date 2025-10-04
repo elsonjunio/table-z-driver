@@ -1,28 +1,70 @@
-use rusb::{Context, Device};
-use anyhow::bail;
+use rusb::{Context, Device, Error as UsbError};
+use anyhow::{bail, Result};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
+use std::thread;
+use std::time::Duration;
 
-pub struct USBReader ;
+/// Estrutura responsável por realizar leituras contínuas de um endpoint USB.
+///
+/// A leitura ocorre em uma *thread* separada e envia os dados recebidos
+/// para o *callback* fornecido pelo usuário.
+///
+/// Essa implementação é voltada principalmente para dispositivos HID
+/// ou dispositivos que usam *interrupt endpoints* para envio periódico de dados.
+pub struct USBReader;
 
 impl USBReader {
-    pub fn new ()  -> anyhow::Result<Self> {
+    /// Cria uma nova instância do leitor USB.
+    ///
+    /// # Exemplo
+    /// ```
+    /// let reader = USBReader::new()?;
+    /// ```
+    pub fn new() -> Result<Self> {
         Ok(USBReader)
     }
-    pub fn start<F>(&self, device: Device<Context>, endpoint: u8, stop_flag: Arc<AtomicBool>, mut callback: F) -> anyhow::Result<()> 
+
+    /// Inicia a leitura contínua de um endpoint USB.
+    ///
+    /// Este método:
+    /// - Localiza o endpoint informado.
+    /// - Detacha o *kernel driver* (se necessário).
+    /// - Faz o *claim* da interface correspondente.
+    /// - Inicia uma *thread* que realiza leituras periódicas até que `stop_flag` seja `false`.
+    ///
+    /// # Parâmetros
+    /// - `device`: Dispositivo USB já detectado via `rusb`.
+    /// - `endpoint`: Endereço do endpoint a ser lido (ex: `0x81`).
+    /// - `stop_flag`: Flag atômica que controla o loop de leitura (quando `false`, encerra).
+    /// - `callback`: Função que será chamada sempre que um pacote for recebido.
+    ///
+    /// # Retorno
+    /// Retorna `Ok(())` se a thread de leitura foi iniciada com sucesso.
+    ///
+    /// # Erros
+    /// Retorna erro (`anyhow::Error`) se o endpoint não for encontrado
+    /// ou se ocorrer falha na abertura ou *claim* da interface.
+    pub fn start<F>(
+        &self,
+        device: Device<Context>,
+        endpoint: u8,
+        stop_flag: Arc<AtomicBool>,
+        mut callback: F,
+    ) -> Result<()>
     where
-    F: FnMut(Vec<u8>) + Send + 'static,
+        F: FnMut(Vec<u8>) + Send + 'static,
     {
-        eprintln!("{:?}", device);
+        eprintln!("Iniciando leitura USB do endpoint {:#04x}", endpoint);
 
-        let timeout = std::time::Duration::from_millis(500);
+        let timeout = Duration::from_millis(500);
+        let mut max_packet_size = 0usize;
+        let mut iface_to_claim = None;
 
-        let mut max_packet_size: usize = 0;
-        let mut iface_to_claim: Option<u8> = None;
-
-        let config_desc = device.active_config_descriptor().unwrap();
+        // Obtém descritores de configuração e busca o endpoint alvo.
+        let config_desc = device.active_config_descriptor()?;
         'outer: for (i, interface) in config_desc.interfaces().enumerate() {
             for (j, descriptor) in interface.descriptors().enumerate() {
                 println!("Interface {} Descriptor {}", i, j);
@@ -30,7 +72,7 @@ impl USBReader {
                     if endpoint == ep.address() {
                         max_packet_size = ep.max_packet_size() as usize;
                         iface_to_claim = Some(descriptor.interface_number());
-                        break 'outer; // sai de todos os loops
+                        break 'outer;
                     }
                 }
             }
@@ -43,7 +85,7 @@ impl USBReader {
         let iface = iface_to_claim.unwrap();
         let handle = device.open()?;
 
-        // detach apenas da interface que vamos usar
+        // Libera o driver do kernel, se ativo.
         if handle.kernel_driver_active(iface)? {
             handle.detach_kernel_driver(iface).ok();
         }
@@ -51,28 +93,29 @@ impl USBReader {
         handle.set_active_configuration(1).ok();
         handle.claim_interface(iface)?;
 
-        // Thread de leitura
-        std::thread::spawn(move || {
+        // Cria thread de leitura
+        thread::spawn(move || {
+            println!("🟢 Thread de leitura iniciada (endpoint {:#04x})", endpoint);
             while stop_flag.load(Ordering::SeqCst) {
                 let mut buf = vec![0u8; max_packet_size];
+
                 match handle.read_interrupt(endpoint, &mut buf, timeout) {
                     Ok(size) => {
                         buf.truncate(size);
                         callback(buf);
                     }
-                    Err(rusb::Error::Timeout) => {
-                        // normal
+                    Err(UsbError::Timeout) => {
+                        // Tempo esgotado — loop continua
                     }
                     Err(e) => {
-                        eprintln!("Erro na leitura: {:?}", e);
+                        eprintln!("⚠️ Erro na leitura USB: {:?}", e);
                         break;
                     }
                 }
             }
-            println!("Thread de leitura terminada.");
+            println!("🔴 Thread de leitura encerrada (endpoint {:#04x})", endpoint);
         });
 
         Ok(())
     }
-
 }
